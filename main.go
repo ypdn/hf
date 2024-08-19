@@ -14,7 +14,7 @@ import (
 	"time"
 )
 
-type forbidden struct{}
+type httpCode int
 
 type fileSystem struct {
 	fs http.FileSystem
@@ -36,7 +36,7 @@ func (f file) Readdir(count int) ([]os.FileInfo, error) {
 	if dirListing {
 		return f.File.Readdir(count)
 	}
-	panic(forbidden{})
+	panic(httpCode(http.StatusForbidden))
 }
 
 func (f file) Stat() (os.FileInfo, error) {
@@ -103,6 +103,7 @@ func main() {
 
 	for addr, dir := range dirs {
 		addr, dir := addr, dir
+		fmt.Fprintf(os.Stderr, "serving '%v' on '%v'\n", dir, addr)
 		wg.Add(1)
 
 		go func() {
@@ -120,8 +121,9 @@ func main() {
 func recoverer(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		defer func() {
-			if (recover() == forbidden{}) {
-				http.Error(w, "Forbidden", http.StatusForbidden)
+			rec := recover()
+			if code, ok := rec.(httpCode); ok {
+				http.Error(w, http.StatusText(int(code)), int(code))
 			}
 		}()
 		next.ServeHTTP(w, r)
